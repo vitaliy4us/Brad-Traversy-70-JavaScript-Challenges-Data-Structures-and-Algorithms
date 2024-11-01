@@ -1,6 +1,5 @@
-Brad Travercy
-
-# 70+ JavaScript Challenges Data Structures & Algorithms**
+Brad Traversy
+# 70+ JavaScript Challenges Data Structures & Algorithms
 
 1\. Welcome To The Course <https://youtu.be/TKE_lFPcRv8>
 
