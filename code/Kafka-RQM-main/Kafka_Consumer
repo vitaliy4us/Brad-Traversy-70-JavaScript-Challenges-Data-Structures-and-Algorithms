@@ -1,0 +1,107 @@
+####################################ячейка в Google Colab №1 - установка и импорт библиотек###########################################
+#установка библиотек 
+!pip install kafka-python 
+
+#импорт модулей 
+from google.colab import auth
+auth.authenticate_user()
+import gspread
+from google.auth import default
+creds, _ = default()
+
+import json
+import random
+from datetime import datetime
+
+from kafka import KafkaConsumer
+from json import loads
+from kafka.structs import TopicPartition
+
+####################################ячейка в Google Colab №2 - потребление из Kafka###########################################
+#объявление потребителя Kafka
+consumer = KafkaConsumer(
+  bootstrap_servers=['........здесь взять название своего сервера.upstash.io:9092'],
+  sasl_mechanism='SCRAM-SHA-256',
+  security_protocol='SASL_SSL',
+  sasl_plain_username='.........здесь имя пользователя, взятое из upstash',
+  sasl_plain_password='..........здесь пароль для этого пользователя',
+  group_id='1',
+  auto_offset_reset='earliest',
+  enable_auto_commit=True
+)
+
+#Google Sheets Autentificate
+gc = gspread.authorize(creds)
+
+# подписка потребителя на определенный раздел topic partition
+#все вопросы лежат в разделе 0
+#все корпоративные заявки лежат в разделе 1
+#заявки от частных лиц лежат в разделе 2
+part=1 #задание раздела
+topic_partition = TopicPartition(topic, part)   # указываем имя топика и номер раздела
+consumer.assign([topic_partition]) #назначаем потребителя на этот топик и раздел
+
+# Если хотим считать с определенной позиции
+#offset=290 # устанавливаем позицию
+#consumer.seek(topic_partition, offset) # устанавливаем позицию
+
+# Если хотим считать с определенного момента времени
+# определяем момент времени, с которого начнется чтение
+#timestamp = datetime(2023, 7, 1, 0, 50, 0).timestamp() * 1000 # переводим в миллисекунды
+#offsets = consumer.offsets_for_times({topic_partition: timestamp}) # определяем смещение для каждой партиции в топике
+
+# Если хотим считать с определенного момента времени или с определенной позиции, устанавливаем позицию для каждой партиции в топике
+#if offsets[topic_partition] is not None:
+#   consumer.seek(topic_partition, offsets[topic_partition].offset)
+
+#Открытие заранее созданного файла Гугл-таблицы по идентификатору (взять из его URL, например, у меня это https://docs.google.com/spreadsheets/d/1ZQuotMVhaOuOtnZ56mvd1zX-5JOhsXc1WTG6GTBjzzM)
+sh = gc.open_by_key('1ZQuotMVhaOuOtnZ56mvd1zX-5JOhsXc1WTG6GTBjzzM')
+wks = sh.worksheet("Partition_"+ str(part)) #в какой лист гугл-таблиц будем записывать
+
+#начальный номер строки для записи данных
+x=1
+
+# обработка сообщений из Kafka
+for message in consumer:
+    try: #пробуем обработать структуру данных полезной нагрузки
+        # распаковка сообщения
+        payload = message.value.decode("utf-8")
+        data = json.loads(payload)
+
+        # вывод сообщения в консоль
+        print(f"Offset: {message.offset}, Value: {message.value}")
+        print(consumer.position(topic_partition))
+        print(f"Timestamp: {message.timestamp}, Value: {message.value}")
+        timestamp = message.timestamp / 1000.0
+        datetime_object = datetime.fromtimestamp(timestamp)
+        formatted_timestamp = datetime_object.strftime('%Y-%m-%d %H:%M:%S.%f')
+        print(f"Timestamp: {formatted_timestamp}, Value: {message.value}")
+        print(data)
+
+        # парсинг сообщения
+        id = data['id']
+        name = data['name']
+        subject = data['subject']
+        content = data['content']
+
+        # вывод распарсенных данных в консоль
+        print(f'Заявка № {id}, клиент {name}, тема: {subject}, содержимое: {content}')
+
+        # обновление данных в Google Sheets
+        x += 1
+        wks.update_cell(x, 1, id)
+        wks.update_cell(x, 2, name)
+        wks.update_cell(x, 3, content)
+
+# обработка исключений
+    except Exception as e:
+        # запись ошибок в лог-файл на Google Диске
+        error_str = f"Error: {str(e)}, Offset: {message.offset}, Value: {message.value}\n"
+        with open("dlq.txt", "a") as f:
+            f.write(error_str)
+        print(f"Error: {str(e)}")
+
+###################################ячейка в Google Colab №3 - закрытие соединения###########################################
+#отписываем потребителя и закрываем соединение 
+consumer.unsubscribe()
+consumer.close()
