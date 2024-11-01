@@ -1,8 +1,6 @@
----
-generator: Riched20 10.0.19041
----
+Brad Travercy
 
-**70+ JavaScript Challenges Data Structures & Algorithms**
+# 70+ JavaScript Challenges Data Structures & Algorithms**
 
 1\. Welcome To The Course <https://youtu.be/TKE_lFPcRv8>
 
